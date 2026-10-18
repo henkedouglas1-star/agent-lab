@@ -25,7 +25,6 @@ module.exports = async function handler(req, res) {
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { return res.status(400).json({error:'Invalid JSON.'}); } }
   if (!body || typeof body !== 'object' || Array.isArray(body) || JSON.stringify(body).length > 8000) return res.status(400).json({error:'Invalid inquiry payload.'});
-  if (body.website) return res.status(200).json({ok:true}); // Honeypot: intentionally discard bot submissions.
 
   const type = clean(body.type, 30);
   const name = clean(body.name, 120);
