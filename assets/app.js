@@ -81,41 +81,100 @@
     window.addEventListener('agentlab:bookmarks', filter);
     filter();
   }
-  document.querySelectorAll('form[data-inquiry]').forEach(form => {
-    const button = form.querySelector('button[type=submit]');
-    const status = form.querySelector('[data-status]');
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      if (!form.reportValidity()) return;
-      const fd = new FormData(form);
-      const values = Object.fromEntries(fd.entries());
-      button.disabled = true;
-      button.textContent = 'Sending…';
-      status.className = 'form-status';
-      status.textContent = '';
-      try {
-        const response = await fetch('/api/inquiry', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(values) });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'The inquiry could not be delivered.');
-        status.textContent = 'Your inquiry was sent. Thank you — we will review it.';
-        status.className = 'form-status success';
-        form.reset();
-      } catch (error) {
-        status.textContent = `${error.message} You can copy your message and keep it for later. No submission was saved.`;
-        status.className = 'form-status error';
-        const copy = form.querySelector('[data-copy-inquiry]');
-        if (copy) {
-          copy.classList.remove('hidden');
-          copy.onclick = () => {
-            const message = [`Name: ${values.name || ''}`, `Email: ${values.email || ''}`, `Company: ${values.company || ''}`, `Interest: ${values.interest || ''}`, `Message: ${values.message || ''}`].join('\n');
-            if (navigator.clipboard?.writeText) navigator.clipboard.writeText(message).then(() => { copy.textContent = 'Copied ✓'; });
-            else window.prompt('Copy your inquiry', message);
-          };
-        }
-      } finally {
-        button.disabled = false;
-        button.textContent = 'Send inquiry →';
+  const inquiryForms = [...document.querySelectorAll('form[data-inquiry]')];
+  if (inquiryForms.length) {
+    let turnstileScriptPromise;
+    const loadTurnstile = () => {
+      if (window.turnstile) return Promise.resolve();
+      if (!turnstileScriptPromise) {
+        turnstileScriptPromise = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+          script.async = true;
+          script.onload = () => window.turnstile ? resolve() : reject(new Error('Security verification could not load.'));
+          script.onerror = () => reject(new Error('Security verification was blocked. Please try another browser.'));
+          document.head.appendChild(script);
+        });
       }
+      return turnstileScriptPromise;
+    };
+    const loadConfig = async () => {
+      const response = await fetch('/api/turnstile-config', {cache:'no-store'});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.siteKey) throw new Error(data.error || 'Security verification is unavailable.');
+      return data.siteKey;
+    };
+    const configPromise = loadConfig();
+    inquiryForms.forEach(form => {
+      const button = form.querySelector('button[type=submit]');
+      const status = form.querySelector('[data-status]');
+      const challengeHost = document.createElement('div');
+      challengeHost.style.margin = '16px 0';
+      challengeHost.setAttribute('aria-label', 'Security verification');
+      const note = form.querySelector('.form-note');
+      if (note) note.after(challengeHost); else button.before(challengeHost);
+      let widgetId = null;
+      button.disabled = true;
+      status.className = 'form-status';
+      status.textContent = 'Loading security verification…';
+      Promise.all([configPromise,loadTurnstile()]).then(([sitekey]) => {
+        widgetId = window.turnstile.render(challengeHost, {
+          sitekey,
+          theme:'dark',
+          action:'agent_lab_inquiry',
+          'expired-callback': () => {
+            status.className = 'form-status error';
+            status.textContent = 'Security verification expired. Please complete it again.';
+          }
+        });
+        button.disabled = false;
+        status.textContent = '';
+      }).catch(error => {
+        status.className = 'form-status error';
+        status.textContent = error.message;
+        button.disabled = true;
+      });
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!form.reportValidity()) return;
+        const token = widgetId !== null && window.turnstile?.getResponse(widgetId);
+        if (!token) {
+          status.className = 'form-status error';
+          status.textContent = 'Please complete security verification before sending.';
+          return;
+        }
+        const fd = new FormData(form);
+        const values = Object.fromEntries(fd.entries());
+        values.turnstileToken = token;
+        button.disabled = true;
+        button.textContent = 'Sending…';
+        status.className = 'form-status';
+        status.textContent = '';
+        try {
+          const response = await fetch('/api/inquiry', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(values) });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || 'The inquiry could not be delivered.');
+          status.textContent = 'Your inquiry was sent. Thank you — we will review it.';
+          status.className = 'form-status success';
+          form.reset();
+        } catch (error) {
+          status.textContent = `${error.message} You can copy your message and keep it for later. No submission was saved.`;
+          status.className = 'form-status error';
+          const copy = form.querySelector('[data-copy-inquiry]');
+          if (copy) {
+            copy.classList.remove('hidden');
+            copy.onclick = () => {
+              const message = [`Name: ${values.name || ''}`, `Email: ${values.email || ''}`, `Company: ${values.company || ''}`, `Interest: ${values.interest || ''}`, `Message: ${values.message || ''}`].join('\n');
+              if (navigator.clipboard?.writeText) navigator.clipboard.writeText(message).then(() => { copy.textContent = 'Copied ✓'; });
+              else window.prompt('Copy your inquiry', message);
+            };
+          }
+        } finally {
+          try { if (widgetId !== null) window.turnstile?.reset(widgetId); } catch {}
+          button.disabled = false;
+          button.textContent = 'Send inquiry →';
+        }
+      });
     });
-  });
+  }
 })();
