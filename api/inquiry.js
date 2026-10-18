@@ -47,8 +47,28 @@ module.exports = async function handler(req, res) {
   }
   limit.set(ip, entry);
 
-  const { RESEND_API_KEY, INQUIRY_TO_EMAIL, INQUIRY_FROM_EMAIL } = process.env;
+  const { RESEND_API_KEY, INQUIRY_TO_EMAIL, INQUIRY_FROM_EMAIL, TURNSTILE_SECRET_KEY } = process.env;
   if (!RESEND_API_KEY || !INQUIRY_TO_EMAIL || !INQUIRY_FROM_EMAIL) return res.status(503).json({error:'Inquiry delivery is not configured yet.'});
+  if (!TURNSTILE_SECRET_KEY) return res.status(503).json({error:'Security verification is not configured yet.'});
+  const token = clean(body.turnstileToken, 2048);
+  if (!token) return res.status(400).json({error:'Please complete the security verification before submitting.'});
+  try {
+    const challenge = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({secret:TURNSTILE_SECRET_KEY,response:token,remoteip:ip}),
+      signal:AbortSignal.timeout(8000)
+    });
+    if (!challenge.ok) return res.status(502).json({error:'Security verification is temporarily unavailable. Please try again.'});
+    const result = await challenge.json();
+    if (result.success !== true || result.hostname !== host || result.action !== 'agent_lab_inquiry') {
+      return res.status(403).json({error:'Security verification failed or expired. Please try again.'});
+    }
+  } catch (e) {
+    console.error('Turnstile verification unavailable:', e?.name || 'unknown');
+    return res.status(502).json({error:'Security verification is temporarily unavailable. Please try again.'});
+  }
+
   const fields = {Type:type, Name:name, Email:email, Company:company, Interest:interest, Message:message};
   const text = Object.entries(fields).map(([label, val]) => `${label}: ${val || '(not provided)'}`).join('\n\n');
   const html = `<h2>New Agent Lab ${escapeHtml(type)} inquiry</h2>${Object.entries(fields).map(([label, val]) => `<p><b>${escapeHtml(label)}:</b> ${escapeHtml(val || '(not provided)').replace(/\n/g, '<br>')}</p>`).join('')}`;
