@@ -1,0 +1,29 @@
+name: Milo — research and growth brief
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: milo-research-brief
+  cancel-in-progress: false
+
+jobs:
+  research:
+    name: Create review-only business brief
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Milo
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          MILO_GEMINI_MODEL: gemini-3.5-flash-lite
+        run: python milo_brief.py
