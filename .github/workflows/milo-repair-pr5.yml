@@ -73,7 +73,8 @@ jobs:
                   "Test a negative failure case by adding a new row with Task 'Prepare summary' and an empty Impact value. The expected output is Priority Review and Needs_Review Yes rather than a guessed impact. Also test an empty Task; if a field is missing or an update goes to the wrong row, stop the Zap, correct the mapped trigger row ID and AI output fields, then repeat the test before enabling the automation.",
                   "Have a human review and approve each suggested P1 task and every Needs_Review Yes row before taking action. Only after reviewing the test results should you publish/turn on the Zap; watch the first live runs in Zap history. Use non-sensitive data and check current Zapier plan limits, AI task usage and account privacy settings before connecting real work. The workflow only labels rows: it does not send messages, execute tasks, or synchronize email/chat accounts automatically."
               ],
-              'caution': 'AI-generated priorities may be inaccurate. Do not send sensitive messages or customer data without authorization. A person must approve important prioritization and monitor automation failures and costs.',
+              
+'caution': 'AI priorities may be wrong: review P1 decisions and flagged rows. Never include confidential data without authorization. Publishing AI by Zapier automations requires a paid Zapier plan; Free users can preview only. This guide follows vendor documentation and has not been independently tested end to end.',
               'source': DOC_URL,
               'source_label': 'Zapier: Use AI by Zapier to analyze and return data',
               'featured': False,
