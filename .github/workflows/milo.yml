@@ -1,0 +1,36 @@
+name: Milo OS — Research to draft PR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: milo-os-single-pipeline
+  cancel-in-progress: false
+
+jobs:
+  draft-guide:
+    name: Research, validate and propose one guide
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out site
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Milo safeguards without using Gemini credits
+        run: python milo_os.py --self-test
+      - name: Run Milo OS (draft PR only)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          MILO_GEMINI_MODEL: gemini-3.5-flash-lite
+        run: python milo_os.py
