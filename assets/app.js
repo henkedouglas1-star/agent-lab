@@ -114,33 +114,53 @@
       const note = form.querySelector('.form-note');
       if (note) note.after(challengeHost); else button.before(challengeHost);
       let widgetId = null;
+      let verifiedToken = '';
+      const setVerification = (message, error = false) => {
+        status.className = error ? 'form-status error' : 'form-status';
+        status.textContent = message;
+      };
       button.disabled = true;
-      status.className = 'form-status';
-      status.textContent = 'Loading security verification…';
-      Promise.all([configPromise,loadTurnstile()]).then(([sitekey]) => {
+      setVerification('Loading security verification…');
+      Promise.all([configPromise, loadTurnstile()]).then(([sitekey]) => {
         widgetId = window.turnstile.render(challengeHost, {
           sitekey,
-          theme:'dark',
-          action:'agent_lab_inquiry',
+          theme: 'dark',
+          action: 'agent_lab_inquiry',
+          callback: token => {
+            verifiedToken = typeof token === 'string' ? token.trim() : '';
+            button.disabled = !verifiedToken;
+            setVerification(verifiedToken ? 'Security verified. You can send your inquiry.' : 'Security verification did not return a token. Please try again.', !verifiedToken);
+          },
           'expired-callback': () => {
-            status.className = 'form-status error';
-            status.textContent = 'Security verification expired. Please complete it again.';
+            verifiedToken = '';
+            button.disabled = true;
+            setVerification('Security verification expired. Please complete it again.', true);
+          },
+          'timeout-callback': () => {
+            verifiedToken = '';
+            button.disabled = true;
+            setVerification('Security check timed out. Please complete it again.', true);
+          },
+          'error-callback': code => {
+            verifiedToken = '';
+            button.disabled = true;
+            setVerification('Cloudflare security verification could not complete. Check your browser protections or Turnstile hostname in Cloudflare and reload. (Code: ' + String(code || 'unknown') + ')', true);
           }
         });
-        button.disabled = false;
-        status.textContent = '';
+        if (!verifiedToken) setVerification('Complete the security check to enable sending.');
       }).catch(error => {
-        status.className = 'form-status error';
-        status.textContent = error.message;
+        setVerification(error.message || 'Security verification is unavailable.', true);
         button.disabled = true;
       });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         if (!form.reportValidity()) return;
-        const token = widgetId !== null && window.turnstile?.getResponse(widgetId);
-        if (!token) {
-          status.className = 'form-status error';
-          status.textContent = 'Please complete security verification before sending.';
+        // Only use the verified token returned by Cloudflare's completion callback.
+        // A rendered widget is not the same as completed security verification.
+        const token = verifiedToken;
+        if (typeof token !== 'string' || !token) {
+          button.disabled = true;
+          setVerification('Please complete the Cloudflare security check before sending.', true);
           return;
         }
         const fd = new FormData(form);
@@ -158,7 +178,7 @@
           status.className = 'form-status success';
           form.reset();
         } catch (error) {
-          status.textContent = `${error.message} You can copy your message and keep it for later. No submission was saved.`;
+          status.textContent = `${error.message} You can copy your message and keep it for later. Delivery was not confirmed.`;
           status.className = 'form-status error';
           const copy = form.querySelector('[data-copy-inquiry]');
           if (copy) {
@@ -170,9 +190,12 @@
             };
           }
         } finally {
+          // Turnstile tokens are single-use. Require a fresh verification to retry.
+          verifiedToken = '';
           try { if (widgetId !== null) window.turnstile?.reset(widgetId); } catch {}
-          button.disabled = false;
+          button.disabled = true;
           button.textContent = 'Send inquiry →';
+          if (status.className === 'form-status') setVerification('Complete the security check to enable sending.');
         }
       });
     });
