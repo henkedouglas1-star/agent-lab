@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Milo v3: source-inspected, review-only AI-use-case article drafter.
+"""Milo v3.1: source-inspected, review-only AI-use-case article drafter.
 
 No article publication, emailing, purchasing, or arbitrary code execution.
 Only stdlib. Gemini key and GitHub token are GitHub Actions secrets.
@@ -24,6 +24,8 @@ GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 GITHUB_API = 'https://api.github.com'
 DEFAULT_MODEL = 'gemini-3.5-flash-lite'
 ISSUE_PREFIX = 'Milo v3 reviewed article draft'
+HOLD_PREFIX = 'Milo v3 source retrieval HOLD'
+MAX_RESEARCH_ATTEMPTS = 3
 MAX_BYTES = 150_000
 OFFICIAL_HOSTS = frozenset({
     'ai.google.dev', 'cloud.google.com', 'developers.google.com', 'support.google.com',
@@ -81,6 +83,21 @@ def safe_doc_url(value):
         return False
 
 
+def normalized_doc_url(value):
+    """Remove harmless URL fragments but never relax first-party host constraints."""
+    if not isinstance(value, str):
+        return None
+    try:
+        u = parse.urlsplit(value)
+        if not u.fragment:
+            return value if safe_doc_url(value) else None
+        bare = parse.urlunsplit((u.scheme, u.netloc, u.path, u.query, ''))
+        return bare if safe_doc_url(bare) else None
+    except ValueError:
+        return None
+
+
+
 class StrictRedirect(request.HTTPRedirectHandler):
     def __init__(self):
         self.redirects = 0
@@ -113,9 +130,11 @@ class TextExtractor(HTMLParser):
             self.out.append(data)
 
 
-def fetch_official_excerpt(url):
+def fetch_official_excerpt(url, reasons=None):
     """Read bounded public docs. We never fetch an arbitrary model-supplied host."""
     if not safe_doc_url(url):
+        if reasons is not None:
+            reasons.append('URL not allowed')
         return None
     try:
         opener = request.build_opener(StrictRedirect())
@@ -124,9 +143,13 @@ def fetch_official_excerpt(url):
         with opener.open(req, timeout=12) as resp:
             final_url = resp.geturl()
             if not safe_doc_url(final_url):
+                if reasons is not None:
+                    reasons.append('Redirect outside approved documentation hosts')
                 return None
             content_type = resp.headers.get('Content-Type', '').lower()
             if not ('text/html' in content_type or 'text/plain' in content_type):
+                if reasons is not None:
+                    reasons.append('Unsupported document format')
                 return None
             raw = resp.read(100_001)
             if len(raw) > 100_000:
@@ -138,9 +161,18 @@ def fetch_official_excerpt(url):
             contents = ' '.join(parser.out)
         contents = html.unescape(re.sub(r'\s+', ' ', contents)).strip()
         if len(contents) < 400:
+            if reasons is not None:
+                reasons.append('Page contains insufficient readable text')
             return None
         return {'url': final_url, 'excerpt': contents[:5500]}
-    except (error.URLError, error.HTTPError, TimeoutError, ValueError, OSError):
+    except (error.URLError, error.HTTPError, TimeoutError, ValueError, OSError) as exc:
+        if reasons is not None:
+            if isinstance(exc, error.HTTPError):
+                reasons.append(f'HTTP {exc.code}')
+            elif isinstance(exc, ValueError):
+                reasons.append('Disallowed redirect or invalid URL')
+            else:
+                reasons.append(type(exc).__name__)
         return None
 
 
@@ -194,14 +226,18 @@ def similarity(a, b):
     return max(ratio, overlap)
 
 
-def research_prompt(items, day):
+def research_prompt(items, day, previous_failures=None):
     existing = '\n'.join(f"- {x['title']}: {x['summary']}" for x in items[:100])
+    rejected = '\n'.join('- '+str(x)[:180] for x in (previous_failures or [])[-10:])
     return f'''You are Milo researching ONE distinctive, useful AI workflow for Agent Lab on {day}.
 Use Google Search grounding. Think practically and prefer nontechnical readers where feasible.
 Choose a workflow not already represented in the directory. Do not invent demand, sponsor
 relationships, customer stories, numbers, capabilities or URLs. No articles are published automatically.
 
 EXISTING TOPICS TO AVOID:\n{existing}\n
+Previous research attempts were unusable; choose a different idea and documented official URLs if needed:
+{rejected or 'No previous attempts'}
+
 Return ONLY valid JSON with these exact keys:
 {{"title": "Specific how-to title", "audience": "who specifically uses it",
  "workflow": "bounded thing reader will build", "differentiator": "how different from listed guides",
@@ -336,6 +372,46 @@ def create_issue_body(day, model, plan, docs, draft, errors, word_count):
 '''
 
 
+
+def publish_hold_issue(issues_url, headers, day, failures):
+    # Create a review-only diagnosis rather than claiming inaccessible docs were verified.
+    title = f'{HOLD_PREFIX} | {day}'
+    issues = request_json(issues_url+'?state=all&per_page=100', headers=headers)
+    if any(isinstance(x, dict) and x.get('title') == title for x in issues):
+        print('A source-retrieval HOLD issue already exists for today. No duplicate created.')
+        return
+    lines = '\n'.join('- '+re.sub(r'(?<!\w)@(?=[A-Za-z0-9])', '@\u200b', str(x)[:230])
+                      for x in failures[:32])
+    body = f'''# Milo v3 — source retrieval HOLD ({day})
+
+**Status: HOLD — NO ARTICLE DRAFT CREATED OR PUBLISHED**
+
+Milo researched up to {MAX_RESEARCH_ATTEMPTS} distinct ideas but could not retrieve at least two
+first-party documentation pages for any idea. Search results, redirects, and vendor webpages
+can be wrong, blocked, or changed. Do not treat the suggested material as verified.
+
+## Diagnostic findings
+{lines or '- No usable sources returned.'}
+
+## What happens next
+- No article was written or approved. No sponsorship outreach occurred.
+- Retry later; if the problem recurs, manually check official documentation URLs.
+- Keep primary-source verification mandatory before human editorial approval.
+'''
+    result = request_json(issues_url, payload={'title': title, 'body': body}, headers=headers)
+    print('Milo v3 created an explicit source HOLD report: '+str(result.get('html_url','unavailable')))
+
+
+def add_step_summary(message):
+    path = os.getenv('GITHUB_STEP_SUMMARY')
+    if path:
+        try:
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write('## Milo v3 research outcome\n\n'+message+'\n')
+        except OSError:
+            pass
+
+
 def run():
     api_key, token = os.getenv('GEMINI_API_KEY',''), os.getenv('GITHUB_TOKEN','')
     repository = os.getenv('GITHUB_REPOSITORY','')
@@ -352,29 +428,52 @@ def run():
         print(f'Milo v3 issue for {day} already exists. Nothing new created.')
         return
     items = catalog()
-    print(f'Milo v3 compared research prompt against {len(items)} current guides.')
-    raw = gemini(api_key, model, research_prompt(items, day), grounded=True, max_tokens=1500)
-    plan = json_object(raw)
-    if not isinstance(plan.get('title'), str) or len(plan['title']) < 12:
-        raise RuntimeError('Research idea lacks a usable title')
-    best = max([(similarity(plan['title'],x['title']),x['title']) for x in items],default=(0,''))
-    if best[0] >= .81:
-        raise RuntimeError(f'Idea overlaps existing catalog: {best[1]}. No issue created.')
-    urls = plan.get('official_urls')
-    if not isinstance(urls, list) or len(urls) < 2:
-        raise RuntimeError('Research returned fewer than 2 first-party documentation URLs')
-    docs, seen = [], set()
-    for candidate in urls[:6]:
-        if not safe_doc_url(candidate) or candidate in seen:
+    failures = []
+    plan, docs = None, []
+    for attempt in range(1, MAX_RESEARCH_ATTEMPTS + 1):
+        print(f'Milo v3 research attempt {attempt}/{MAX_RESEARCH_ATTEMPTS} against {len(items)} current guides.')
+        # API or quota errors are real failures, not missing documentation. Do not hide them.
+        raw = gemini(api_key, model, research_prompt(items, day, failures), grounded=True, max_tokens=1700)
+        try:
+            candidate_plan = json_object(raw)
+        except (ValueError, json.JSONDecodeError) as exc:
+            failures.append(f'Attempt {attempt}: model did not supply valid structured research ({type(exc).__name__}).')
             continue
-        seen.add(candidate)
-        page = fetch_official_excerpt(candidate)
-        if page and page['url'] not in {x['url'] for x in docs}:
-            docs.append(page)
-        if len(docs) >= 4:
+        name = candidate_plan.get('title')
+        if not isinstance(name, str) or len(name) < 12:
+            failures.append(f'Attempt {attempt}: research idea lacks usable title.')
+            continue
+        best = max([(similarity(name,x['title']),x['title']) for x in items],default=(0,''))
+        if best[0] >= .81:
+            failures.append(f'Attempt {attempt}: suggested title overlaps existing guide ({best[1][:100]}).')
+            continue
+        urls = candidate_plan.get('official_urls')
+        if not isinstance(urls, list) or len(urls) < 2:
+            failures.append(f'Attempt {attempt}: fewer than 2 proposed documentation URLs for {name[:90]}.')
+            continue
+        obtained, seen = [], set()
+        for original in urls[:6]:
+            url = normalized_doc_url(original)
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            reasons = []
+            page = fetch_official_excerpt(url, reasons)
+            if page and page['url'] not in {x['url'] for x in obtained}:
+                obtained.append(page)
+            else:
+                host = parse.urlsplit(url).hostname or 'unknown'
+                failures.append(f'Attempt {attempt}: {host} document inaccessible ({reasons[0] if reasons else "duplicate or empty"}).')
+            if len(obtained) >= 4:
+                break
+        if len(obtained) >= 2:
+            plan, docs = candidate_plan, obtained
             break
-    if len(docs) < 2:
-        raise RuntimeError('Could not fetch 2 approved official docs. No unsupported draft issued.')
+        failures.append(f'Attempt {attempt}: only {len(obtained)} official documentation pages fetched for {name[:100]}.')
+    if not docs:
+        publish_hold_issue(issues_url, github_headers(token), day, failures)
+        add_step_summary('**HOLD:** Official documentation retrieval failed. No article was created. See GitHub Issues for the source-retrieval report.')
+        return
     print(f'Milo v3 read {len(docs)} first-party documentation pages.')
     draft = gemini(api_key, model, draft_prompt(plan, docs), max_tokens=5600)
     checks, count = check_draft(draft, docs, items)
@@ -385,6 +484,7 @@ def run():
     print('Created '+('HOLD' if checks else 'REVIEW')+' issue: '+str(issue.get('html_url','unavailable')))
     if checks:
         print('Automated review problems: '+'; '.join(checks))
+    add_step_summary(('**HOLD:** Draft failed automated checks. ' if checks else '**EDITOR REVIEW REQUIRED:** Draft passed automated format/source checks. ') + 'This is not an independently verified or published article. Review the GitHub issue.')
 
 
 if __name__ == '__main__':
