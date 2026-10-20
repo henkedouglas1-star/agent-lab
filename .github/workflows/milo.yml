@@ -1,8 +1,8 @@
-name: Milo OS — Research to draft PR
+name: Milo OS — SEO research and draft PR
 
 on:
   schedule:
-    - cron: '17 8 * * *'
+    - cron: '17 8 * * 2,5'
       timezone: 'America/Los_Angeles'
   workflow_dispatch:
     inputs:
@@ -136,29 +136,82 @@ jobs:
               return errors
           
           
+          def check_seo(seo):
+              errs = []
+              bounds = {'search_query': (12, 160), 'intro': (200, 950), 'prompt': (350, 1550),
+                        'sample_input': (70, 550), 'expected_output': (80, 650),
+                        'failure_test': (95, 650)}
+              if not isinstance(seo, dict):
+                  return ['Missing SEO tutorial expansion.']
+              for key, (lo, hi) in bounds.items():
+                  val = seo.get(key)
+                  if not isinstance(val, str) or not lo <= len(val.strip()) <= hi:
+                      errs.append('Missing or invalid SEO expansion: '+key)
+              faqs = seo.get('faq')
+              if not isinstance(faqs, list) or not 2 <= len(faqs) <= 4:
+                  errs.append('SEO expansion requires 2-4 FAQs')
+              else:
+                  for entry in faqs:
+                      if (not isinstance(entry, dict) or set(entry) != {'q', 'a'} or
+                          not isinstance(entry['q'], str) or not 15 <= len(entry['q']) <= 140 or
+                          not isinstance(entry['a'], str) or not 90 <= len(entry['a']) <= 550):
+                          errs.append('Invalid SEO FAQ'); break
+              return errs
+
+
           def inspect_changes(before, after, changed):
               errors = []
               old = {x['slug']: x for x in before}
               new = {x['slug']: x for x in after}
+              if len(old) != len(before) or len(new) != len(after):
+                  return ['Duplicate slugs in proposal.'], None
+              if set(old) - set(new):
+                  return ['An existing guide was deleted.'], None
               added = [x for x in after if x['slug'] not in old]
-              if len(added) != 1:
-                  return [f'Expected exactly one new guide; found {len(added)}.'], None
-              item = added[0]
-              for slug, original in old.items():
-                  if new.get(slug) != original:
-                      errors.append('Existing catalog guide was deleted or modified: '+slug)
-                      break
-              allow = {'data/use_cases.json', 'index.html', 'directory/index.html',
-                       f"guides/{item['slug']}/index.html"}
-              unexpected = set(changed) - allow
+              updated = [x for x in after if x['slug'] in old and x != old[x['slug']]]
+              if len(added) + len(updated) != 1:
+                  return ['Expected exactly one new OR improved guide; found '+str(len(added)+len(updated))], None
+              if len(added) > 1 or len(new) != len(old) + len(added):
+                  return ['Catalog changed unexpectedly.'], None
+              item = (added or updated)[0]
+              slug = item['slug']
+              if updated:
+                  if slug == 'sop-to-checklist' or old[slug].get('seo'):
+                      errors.append('Protected or already expanded guide was overwritten.')
+                  for key in ('category', 'difficulty', 'time', 'tool', 'audience', 'featured'):
+                      if item.get(key) != old[slug].get(key):
+                          errors.append('Improvement changed protected field: '+key)
+              allowed = {'data/use_cases.json', 'index.html', 'directory/index.html',
+                         'sitemap.xml', 'guides/'+slug+'/index.html'}
+              unexpected = set(changed) - allowed
               if unexpected:
                   errors.append('Unexpected changed files: '+', '.join(sorted(unexpected)[:6]))
-              if f"guides/{item['slug']}/index.html" not in changed:
-                  errors.append('Generated guide HTML is missing from PR.')
+              if 'data/use_cases.json' not in changed or 'guides/'+slug+'/index.html' not in changed:
+                  errors.append('Missing data or generated article change.')
+              page = 'guides/'+slug+'/index.html'
+              if not os.path.isfile(page):
+                  errors.append('SEO article file missing.')
+              else:
+                  with open(page, encoding='utf-8') as f:
+                      rendered = f.read()
+                  if 'SEO field guide' not in rendered:
+                      errors.append('Proposed expanded SEO content is not in generated page.')
+              # Require sitemap to contain all pages, regardless of whether its bytes changed.
+              import xml.etree.ElementTree as ET
+              try:
+                  xml = ET.parse('sitemap.xml')
+                  urls = [n.text for n in xml.findall('.//{*}loc')]
+                  expected = {'https://agent-lab-sage.vercel.app/'+('guides/'+x['slug']+'/' ) for x in after}
+                  expected.update('https://agent-lab-sage.vercel.app'+path for path in
+                                  ('/', '/directory/', '/community/', '/about/', '/sponsor/'))
+                  if set(urls) != expected or len(urls) != len(expected):
+                      errors.append('Sitemap does not exactly match the current catalog.')
+              except (OSError, ValueError, ET.ParseError):
+                  errors.append('Sitemap is missing or invalid.')
               errors.extend(check_guide(item))
+              errors.extend(check_seo(item.get('seo')))
               return errors, item
-          
-          
+
           def identify_pr():
               manual = os.environ.get('MILO_AUDIT_PR', '').strip()
               if manual:
