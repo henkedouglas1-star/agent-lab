@@ -427,12 +427,27 @@ def run():
     if not api_key:
         raise MiloError('GitHub secret GEMINI_API_KEY is missing')
     day = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    api_branches = request_json(f'{GITHUB_API}/repos/{repo}/branches?per_page=100',
-                                headers=github_headers(token))
-    if any(isinstance(x, dict) and str(x.get('name', '')).startswith(f'milo/guide-{day}-')
-           for x in api_branches):
-        print('A Milo OS draft branch already exists today. Skipping to avoid extra API costs.')
-        return
+    # A second draft on the same UTC day requires an explicit checkbox on a
+    # manually dispatched GitHub Actions run. Scheduled and normal runs retain
+    # the existing once-per-UTC-day safety limit.
+    test_now = (os.environ.get('MILO_TEST_NOW', '').strip().lower() == 'true'
+                and os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch')
+    if test_now:
+        run_id = os.environ.get('GITHUB_RUN_ID', '')
+        run_attempt = os.environ.get('GITHUB_RUN_ATTEMPT', '1')
+        if not re.fullmatch(r'[1-9][0-9]{0,19}', run_id):
+            raise MiloError('Manual test needs a valid GitHub Actions run ID. No API credits used.')
+        if not re.fullmatch(r'[1-9][0-9]{0,3}', run_attempt):
+            raise MiloError('Manual test needs a valid GitHub Actions attempt. No API credits used.')
+    else:
+        api_branches = request_json(f'{GITHUB_API}/repos/{repo}/branches?per_page=100',
+                                    headers=github_headers(token))
+        if any(isinstance(x, dict) and str(x.get('name', '')).startswith(f'milo/guide-{day}-')
+               for x in api_branches):
+            print('A Milo OS draft branch already exists today. Skipping to avoid extra API costs.')
+            return
+    if test_now:
+        print('Manual Test now override confirmed. This test uses Gemini credits and creates a DRAFT PR only.')
     if git_changed_paths():
         raise MiloError('Working tree is not clean; refusing to overwrite user changes')
     catalog = load_catalog()
@@ -458,6 +473,9 @@ def run():
     print('Milo draft passed deterministic editorial preflight; factual review still required.')
     changed = build_and_check(item, catalog)
     branch = f"milo/guide-{day}-{item['slug'][:45]}"
+    if test_now:
+        # Suffix isolates repeated same-day test runs and prevents branch collisions.
+        branch += f'-{run_id}-{run_attempt}'
     print(f'Validated guide: {item["title"]} ({len(item["steps"])} steps).')
     cmd('git', 'config', 'user.name', 'milo-agent-lab[bot]')
     cmd('git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
@@ -655,6 +673,80 @@ class SelfTests(unittest.TestCase):
 
     def test_run_rejects_twice_without_branch_or_pr(self):
         self._simulate_generation('reject')
+
+    def test_normal_same_day_guard_skips_before_gemini(self):
+        today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        old_branch = {'name': 'milo/guide-' + today + '-prior-guide'}
+        with (mock.patch.dict(os.environ, {'GITHUB_TOKEN': 'fake-token',
+                                          'GITHUB_REPOSITORY': 'example/agent-lab',
+                                          'GEMINI_API_KEY': 'fake-key',
+                                          'GITHUB_EVENT_NAME': 'workflow_dispatch',
+                                          'MILO_TEST_NOW': 'false'}, clear=True),
+              mock.patch(__name__ + '.request_json', return_value=[old_branch]) as check,
+              mock.patch(__name__ + '.gemini_call') as gemini,
+              mock.patch(__name__ + '.cmd') as git):
+            run()
+        check.assert_called_once()
+        gemini.assert_not_called()
+        git.assert_not_called()
+
+    def test_test_now_requires_dispatch_even_if_env_set(self):
+        today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        old_branch = {'name': 'milo/guide-' + today + '-prior-guide'}
+        with (mock.patch.dict(os.environ, {'GITHUB_TOKEN': 'fake-token',
+                                          'GITHUB_REPOSITORY': 'example/agent-lab',
+                                          'GEMINI_API_KEY': 'fake-key',
+                                          'GITHUB_EVENT_NAME': 'schedule',
+                                          'MILO_TEST_NOW': 'true',
+                                          'GITHUB_RUN_ID': '123456'}, clear=True),
+              mock.patch(__name__ + '.request_json', return_value=[old_branch]) as check,
+              mock.patch(__name__ + '.gemini_call') as gemini):
+            run()
+        check.assert_called_once()
+        gemini.assert_not_called()
+
+    def test_test_now_needs_valid_run_id_before_spending(self):
+        with (mock.patch.dict(os.environ, {'GITHUB_TOKEN': 'fake-token',
+                                          'GITHUB_REPOSITORY': 'example/agent-lab',
+                                          'GEMINI_API_KEY': 'fake-key',
+                                          'GITHUB_EVENT_NAME': 'workflow_dispatch',
+                                          'MILO_TEST_NOW': 'true',
+                                          'GITHUB_RUN_ID': 'not-a-run-id'}, clear=True),
+              mock.patch(__name__ + '.gemini_call') as gemini,
+              mock.patch(__name__ + '.request_json') as check):
+            with self.assertRaisesRegex(MiloError, 'valid GitHub Actions run ID'):
+                run()
+        gemini.assert_not_called()
+        check.assert_not_called()
+
+    def test_test_now_creates_unique_draft_and_bypasses_daily_guard(self):
+        items, bad, good = self._integration_fixture()
+        outputs = [('Grounded research note describes a practical AI workflow for small teams.', 0),
+                   (good, 0)]
+        with (mock.patch.dict(os.environ, {'GITHUB_TOKEN': 'fake-token',
+                                          'GITHUB_REPOSITORY': 'example/agent-lab',
+                                          'GEMINI_API_KEY': 'fake-key',
+                                          'GITHUB_EVENT_NAME': 'workflow_dispatch',
+                                          'MILO_TEST_NOW': 'true',
+                                          'GITHUB_RUN_ID': '39363579597',
+                                          'GITHUB_RUN_ATTEMPT': '2'}, clear=True),
+              mock.patch(__name__ + '.request_json') as daily_guard,
+              mock.patch(__name__ + '.git_changed_paths', return_value=[]),
+              mock.patch(__name__ + '.load_catalog', return_value=items),
+              mock.patch(__name__ + '.gemini_call', side_effect=outputs) as gemini,
+              mock.patch(__name__ + '.build_and_check', return_value=['data/use_cases.json', 'guides/new/index.html']) as build,
+              mock.patch(__name__ + '.create_pull_request', return_value={'html_url': 'https://github.com/example/agent-lab/pull/7'}) as pr,
+              mock.patch(__name__ + '.cmd', return_value='') as cmdmock):
+            run()
+        daily_guard.assert_not_called()
+        self.assertEqual(gemini.call_count, 2)
+        build.assert_called_once()
+        pr.assert_called_once()
+        branches = [c.args[-1] for c in cmdmock.call_args_list
+                    if c.args[:3] == ('git', 'switch', '-c')]
+        self.assertEqual(len(branches), 1)
+        self.assertTrue(branches[0].startswith('milo/guide-'))
+        self.assertTrue(branches[0].endswith('-39363579597-2'))
 
     def test_slug(self):
         self.assertEqual(slugify('Hello AI: World!'), 'hello-ai-world')
