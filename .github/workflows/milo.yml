@@ -1,10 +1,10 @@
 name: Milo OS — Research to draft PR
 
 on:
-  workflow_dispatch:
-    schedule:
+  schedule:
     - cron: '17 8 * * *'
       timezone: 'America/Los_Angeles'
+  workflow_dispatch:
     inputs:
       audit_pr:
         description: 'Existing Milo draft PR number to audit without Gemini usage; leave blank to generate a new guide'
