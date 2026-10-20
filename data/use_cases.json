@@ -527,5 +527,30 @@
     "source": "https://help.zapier.com/hc/en-us/articles/8496342944013-Use-AI-by-Zapier-to-analyze-and-return-data",
     "source_label": "Zapier: Use AI by Zapier to analyze and return data",
     "featured": false
+  },
+  {
+    "slug": "analyze-and-categorize-client-feedback-using-ai-by-zapier",
+    "title": "Analyze and Categorize Client Feedback Using AI by Zapier",
+    "category": "Automation",
+    "difficulty": "Beginner",
+    "time": "30–60 min",
+    "tool": "Zapier, Google Sheets",
+    "summary": "Process unstructured client feedback into structured categories and actionable tasks using Zapier and AI text analysis.",
+    "outcome": "A configured automated workflow that parses raw client feedback entries into normalized categories and action flags within a spreadsheet.",
+    "audience": "Freelancers, independent consultants, and small-agency project managers.",
+    "steps": [
+      "Open Google Sheets and create a new tracking spreadsheet with columns for Raw Feedback, Category, Action Item, and Review Flag.",
+      "Log in to your Zapier account and click Create Zap to start configuring a new automated workflow.",
+      "Set up the trigger event by choosing Google Sheets as the app and New or Updated Spreadsheet Row as the trigger event, connecting your feedback sheet.",
+      "Add an AI by Zapier action step to the workflow and select the analysis or text generation function to process incoming row data.",
+      "Configure the AI prompt using a concrete sample input, such as 'Sample input: Make the logo bigger and update the copy on page 2'.",
+      "Define the expected AI output structure in your prompt settings, expecting a result that outputs Category: Layout Adjustment, Action Item: Enlarge logo and update page 2 text, and Review Flag: Ready for Task.",
+      "Perform a negative test by entering an ambiguous input, such as 'Sample input: Just make it pop more', and verify the AI returns an expected Review Flag of 'Needs Human Review' due to unstated context.",
+      "Add a human review checkpoint step where team members inspect flagged rows before tasks are pushed to billing or production project management boards."
+    ],
+    "caution": "Review Zapier and connected spreadsheet data privacy settings to ensure client communications and proprietary notes are not used for default model training, and check your plan tier for AI tool execution limits.",
+    "source": "https://help.zapier.com/hc/en-us/articles/8496342944013-Use-AI-by-Zapier-to-analyze-and-return-data",
+    "source_label": "Zapier: Use AI by Zapier to analyze and return data",
+    "featured": false
   }
 ]
