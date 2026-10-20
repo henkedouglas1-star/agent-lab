@@ -527,5 +527,29 @@
     "source": "https://help.zapier.com/hc/en-us/articles/8496342944013-Use-AI-by-Zapier-to-analyze-and-return-data",
     "source_label": "Zapier: Use AI by Zapier to analyze and return data",
     "featured": false
+  },
+  {
+    "slug": "automate-email-draft-triage-for-small-teams-with-no-code-ai",
+    "title": "Automate Email Draft Triage for Small Teams with No-Code AI",
+    "category": "Operations",
+    "difficulty": "Beginner",
+    "time": "30–60 min",
+    "tool": "Zapier + AI",
+    "summary": "Connect your inbox to an AI model to draft routine responses to inbound customer inquiries for human review.",
+    "outcome": "Five test emails successfully generate polite, grounded draft replies in your email client's draft folder.",
+    "audience": "Small-business owners and operations leads managing routine inbound email volume.",
+    "steps": [
+      "Create a dedicated label or folder in your email provider named 'AI-Triage' for routing test messages.",
+      "Open your automation builder and create a new workflow triggered by a new email arriving with the 'AI-Triage' label.",
+      "Add an LLM integration step and paste a strict prompt instructing the model to draft a brief response using only provided FAQ text, outputting 'REQUIRES_HUMAN_REVIEW' if outside scope.",
+      "Add a static text block or document containing your approved FAQs, scheduling links, and business policies into the prompt context.",
+      "Configure the final workflow action to create a new draft reply in your email client rather than sending the message automatically.",
+      "Send five test emails covering both standard FAQ questions and out-of-scope inquiries to your labeled folder.",
+      "Review the resulting drafts in your email client to verify that tone is appropriate and out-of-scope queries correctly trigger human review."
+    ],
+    "caution": "Always ensure the workflow is configured to create email drafts rather than sending messages automatically to prevent incorrect automated replies.",
+    "source": "https://help.zapier.com/hc/en-us/articles/37518970271245-What-is-Zapier",
+    "source_label": "Zapier automation overview",
+    "featured": false
   }
 ]
