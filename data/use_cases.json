@@ -484,23 +484,26 @@
   },
   {
     "slug": "sop-to-checklist",
-    "title": "Transform a process into a repeatable checklist",
+    "title": "How to Turn an SOP into a Checklist with ChatGPT",
     "category": "Operations",
     "difficulty": "Beginner",
     "time": "20–45 min",
     "tool": "ChatGPT",
-    "summary": "Convert a long SOP into a quick checklist with exceptions and escalation paths.",
-    "outcome": "Make recurring work easier to execute correctly.",
-    "audience": "Operations and support teams",
+    "summary": "Turn a standard operating procedure (SOP) into a reliable checklist with ChatGPT. Includes a copyable prompt, worked example, and free Excel template.",
+    "outcome": "Create a reviewable, source-traceable checklist with owners, decision points and stop conditions—without silently inventing or removing SOP requirements.",
+    "audience": "Operations leads, small teams, virtual assistants and freelancers documenting repeatable work.",
     "steps": [
-      "Start with the current approved SOP.",
-      "Ask AI to extract ordered actions and decision points.",
-      "Add checkpoints for exceptions, approvals, and failures.",
-      "Have the process owner test it against real scenarios."
+      "Choose one current, approved SOP and identify its version, owner and intended audience. Use a fictional or redacted sample first; do not upload sensitive company documents without authorization.",
+      "Paste the SOP into ChatGPT or attach a supported document. Tell ChatGPT to use only that source, list missing context, and preserve the original order, approvals, exceptions and warnings.",
+      "Copy the structured prompt provided below. Ask for checklist rows with an action, trigger, responsible role, required evidence, stop/escalation rule and specific source-section reference.",
+      "Compare every proposed checklist line to the SOP. Check that every mandatory action and exception survived; flag vague instructions, missing deadlines and newly invented steps for owner review.",
+      "Download the free Excel checklist template and transfer the approved actions into its Checklist worksheet. Use the source-reference column to make every step auditable.",
+      "Run two dry runs: a normal case and a failure case, such as unavailable input data or a missing approval. Confirm that the operator knows when to stop and whom to notify.",
+      "Have the process owner approve a version before publishing the checklist to the team. Retest and update it whenever the underlying SOP changes."
     ],
-    "caution": "Do not omit safety-critical or compliance-sensitive steps.",
-    "source": "https://developers.openai.com/api/docs/quickstart",
-    "source_label": "OpenAI developer quickstart",
+    "caution": "An AI draft is not an approved procedure. Require owner review, particularly for safety-critical, legal or regulated processes. Remove confidential details before sharing documents; review ChatGPT data controls and your organization’s AI policy.",
+    "source": "https://help.openai.com/en/articles/8555545-uploading-files-and-audio-to-chatgpt",
+    "source_label": "OpenAI: Uploading files and audio to ChatGPT",
     "featured": false
   },
   {
