@@ -95,7 +95,7 @@ jobs:
           source = work / 'milo (1).yml'
           canonical = work / 'milo.yml'
           remove = ['milo (1).yml', 'milo-v1.yml', 'milo-v2.yml',
-                    'milo-v3.yml', 'milo-repair-pr5.yml', 'milo-consolidate.yml']
+                    'milo-v3.yml', 'milo-repair-pr5.yml', 'milo-consolidate(1).yml']
           required = [canonical, source] + [work / name for name in remove]
           missing = [str(x) for x in required if not x.is_file()]
           if missing:
@@ -120,7 +120,7 @@ jobs:
               '.github/workflows/milo-v2.yml',
               '.github/workflows/milo-v3.yml',
               '.github/workflows/milo-repair-pr5.yml',
-              '.github/workflows/milo-consolidate.yml',
+              '.github/workflows/milo-consolidate(1).yml',
           }
           paths = set(subprocess.check_output(
               ['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
