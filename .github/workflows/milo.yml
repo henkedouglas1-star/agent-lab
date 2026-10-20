@@ -8,6 +8,11 @@ on:
         required: false
         default: ''
         type: string
+      test_now:
+        description: 'Allow one extra manual test today (uses Gemini credits; creates a draft PR only)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -41,6 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           MILO_GEMINI_MODEL: gemini-3.5-flash-lite
+          MILO_TEST_NOW: ${{ inputs.test_now }}
         run: python milo_os.py
       - name: Editorial quality gate (never merges or publishes)
         env:
