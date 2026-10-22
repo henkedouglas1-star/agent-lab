@@ -72,14 +72,28 @@ def seo_article(info):
         <p><em>Editorial proposal: examples and steps require verification against current vendor documentation before production use. Search demand and successful execution have not been independently confirmed.</em></p>
     </section>''')
 
+def implementation_tutorial(info):
+    """Render reviewed structured tutorial data; never accept raw generated HTML."""
+    if not info:
+        return ''
+    tests = ''.join('<li><strong>'+e(t['input'])+'</strong><p>Expected: '+e(t['expected'])+'</p></li>' for t in info['tests'])
+    notes = ''.join('<h2>'+e(n['title'])+'</h2><p>'+e(n['text'])+'</p>' for n in info['notes'])
+    sources = ''.join('<li><a href="'+e(src['url'])+'" target="_blank" rel="noopener noreferrer">'+e(src['label'])+'</a></li>' for src in info['sources'])
+    return ('<section aria-label="Implementation details"><h2>Reusable AI prompt</h2>'
+            '<pre style="white-space:pre-wrap;overflow-wrap:anywhere"><code>'+e(info['prompt'])+'</code></pre>'
+            '<h2>Concrete sample input</h2><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+e(info['sample_input'])+'</pre>'
+            '<h2>Expected output</h2><p>'+e(info['expected_output'])+'</p>'
+            '<h2>Acceptance tests: run before activation</h2><ol>'+tests+'</ol>'+notes+
+            '<h2>Official implementation documentation</h2><ul>'+sources+'</ul></section>')
+
 for x in ITEMS:
     title,slug=e(x['title']),e(x['slug'])
     step_html = ''.join(f'<li>{e(s)}</li>' for s in x['steps'])
-    editorial_html = SOP_EDITORIAL_HTML if x['slug'] == 'sop-to-checklist' else seo_article(x.get('seo'))
+    editorial_html = SOP_EDITORIAL_HTML if x['slug'] == 'sop-to-checklist' else seo_article(x.get('seo')) + implementation_tutorial(x.get('tutorial'))
     guide = f'''<section class="container article-layout"><article class="article-main"><div class="breadcrumbs"><a href="/">Home</a> / <a href="/directory/">Directory</a> / {e(x['category'])}</div><h1 class="article-title">{title}</h1><p class="article-lead">{e(x['summary'])}</p><div class="article-meta"><span class="meta-pill">{e(x['category'])}</span><span class="meta-pill">{e(x['difficulty'])}</span><span class="meta-pill">Estimated first setup: {e(x['time'])}</span><span class="meta-pill">Tool: {e(x['tool'])}</span></div><div class="btn-row"><button class="button secondary small" data-save="{slug}" data-title="{title}" aria-pressed="false" type="button">♡ Save</button><button class="button secondary small" data-copy="" type="button">Copy guide link ↗</button></div><h2>What you can accomplish</h2><p>{e(x['outcome'])}</p><h2>Your first build: step by step</h2><ol class="steps-list">{step_html}</ol>{editorial_html}<h2>What to watch out for</h2><div class="notice"><strong>Practical caution:</strong> {e(x['caution'])}</div><h2>How to evaluate the result</h2><p>Run a small test on representative inputs. Check accuracy, the time it actually saves, whether a person can correct mistakes, and whether the workflow achieves the intended outcome. Increase automation only after you can explain how failures are detected and handled.</p><p class="source-details">Editor's note: The workflow is an Agent Lab implementation suggestion, not a vendor-endorsed tutorial. Setup times are editorial estimates; actual work varies by tool, account access, and complexity.</p></article><aside><div class="sidebox"><span class="eyebrow">Field notes</span><h3>Who this is for</h3><p>{e(x['audience'])}</p><h3>Suggested toolkit</h3><p>{e(x['tool'])}</p><h3>Source documentation</h3><p>Review the product's own documentation before setting anything up.</p><a class="external" href="{e(x['source'])}" target="_blank" rel="noopener noreferrer">{e(x['source_label'])} ↗</a><a class="button secondary" href="/directory/">← Back to the directory</a></div></aside></section><section class="feature-band"><div class="container feature-band-inner"><div><div class="eyebrow">More to explore</div><h2>One useful workflow leads to another.</h2><p>Explore the directory for other ways to apply AI to everyday work.</p></div><a class="button primary" href="/directory/">Find another use case ↗</a></div></section>'''
     dest=ROOT/'guides'/x['slug']; dest.mkdir(parents=True,exist_ok=True)
     canonical_url = ('https://agent-lab-sage.vercel.app/guides/' + x['slug'] + '/'
-                     if x.get('seo') else None)
+                     if x.get('seo') or x.get('tutorial') else None)
     (dest/'index.html').write_text(layout(x['title'],x['summary'],'',guide,
                                    canonical=canonical_url),encoding='utf-8')
 
