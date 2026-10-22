@@ -107,7 +107,9 @@ class MiloTest(unittest.TestCase):
              patch.object(m,'request_json',side_effect=fake_api), \
              patch.object(m,'gemini',side_effect=fake_gen), \
              patch.object(m,'catalog',return_value=[{'title':'Plan a user research meeting','summary':'sample'}]), \
-             patch.object(m,'fetch_official_excerpt',return_value=None):
+             patch.object(m,'fetch_official_excerpt',return_value=None), \
+             patch.object(m.dt, 'datetime') as clock:
+            clock.now.return_value.date.return_value.isoformat.return_value = '2026-10-19'
             m.run()
         self.assertEqual(len(created),1)
         self.assertIn('Proposed article',created[0]['body'])
