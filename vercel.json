@@ -34,8 +34,18 @@
   ],
   "redirects": [
     {
-      "source": "/guides/analyze-and-categorize-client-feedback-using-ai-by-zapier/:path*",
-      "destination": "/guides/turn-client-revision-requests-into-trackable-tasks-with-ai-by-zapier/:path*",
+      "source": "/guides/analyze-and-categorize-client-feedback-using-ai-by-zapier",
+      "destination": "/guides/turn-client-revision-requests-into-trackable-tasks-with-ai-by-zapier/",
+      "permanent": true
+    },
+    {
+      "source": "/guides/analyze-and-categorize-client-feedback-using-ai-by-zapier/",
+      "destination": "/guides/turn-client-revision-requests-into-trackable-tasks-with-ai-by-zapier/",
+      "permanent": true
+    },
+    {
+      "source": "/guides/analyze-and-categorize-client-feedback-using-ai-by-zapier/index.html",
+      "destination": "/guides/turn-client-revision-requests-into-trackable-tasks-with-ai-by-zapier/",
       "permanent": true
     }
   ]
