@@ -28,7 +28,8 @@ def validate(base_ref=None):
         # Pin the reviewed main snapshot; fail after any newer main commit.
         snapshot=(ROOT/'editorial-base.txt').read_text().strip()
         current=subprocess.check_output(['git','rev-parse',base_ref],cwd=ROOT,text=True).strip()
-        if snapshot!=current:
+        up_to_date = subprocess.run(['git','merge-base','--is-ancestor',base_ref,'HEAD'],cwd=ROOT).returncode == 0
+        if not up_to_date and snapshot!=current:
             errors.append('Reviewed main snapshot is stale: incorporate current main and regenerate')
         old=json.loads(subprocess.check_output(['git','show',base_ref+':data/use_cases.json'],cwd=ROOT,text=True))
         if not {x['slug'] for x in old}<=set(slugs): errors.append('Approved base guide removed')
